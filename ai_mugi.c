@@ -10,7 +10,7 @@
 #include <jansson.h>
 
 #define BUF_SIZE 4096
-#define MAP_SIZE (16)
+#define MAP_SIZE (20)
 #define QUEUE_SIZE (MAP_SIZE*MAP_SIZE)
 #define FREESPACE (0)
 #define BLOCK (1)
@@ -37,7 +37,7 @@ int queue_rp;
 int queue_wp;
 
 
-int is_heal(json_t *player)
+int is_heal(json_t *player, int threshold)
 {
 		int result=0;
 		json_int_t hp;
@@ -47,7 +47,7 @@ int is_heal(json_t *player)
 		maxhp=json_integer_value(json_object_get(player,"maxhp"));
 		heal=json_integer_value(json_object_get(player,"heal"));
 
-		if((heal>0) && (hp*2<maxhp))
+		if((heal>0) && ( (hp<=10) ||(hp<(maxhp/threshold))))
 		{
 			result=1;
 		}
@@ -208,7 +208,7 @@ int next_move(json_t* message)
 				ret=search(x,y,BLOCK);
 		}
 
-		if((num_items>0) && (ret==MOVE_FAIL))
+		if((num_items>0) && (ret==MOVE_FAIL) && (num_heal>=1))
 		{
 				//お宝ハンターにゃんこ
 				ret=search(x,y,ITEM);
@@ -241,7 +241,7 @@ void map_mode(json_t* message)
 		player=json_object_get(message,"player");
 
 //		printf("hp:%lld maxhp:%lld\n",hp,max_hp);
-		if(is_heal(player))
+		if(is_heal(player,3))
 		{
 				puts("HEAL");
 		}
@@ -267,35 +267,68 @@ void battle_mode(json_t* message)
 		json_t *player;
 		json_t *monster;
 		json_t *monsters;
-		json_int_t minhp=65536;
+		json_int_t minhp[2]={65536,65536};
 		json_int_t tmp;
-		int target=1;
+		json_int_t str;
+		int target[2]={1,1};
 		int num_monsters;
+		int alive_monsters=0;
 		player=json_object_get(message,"player");
 		monsters=json_object_get(message,"monsters");
 		num_monsters = json_array_size(monsters);
 //		printf("%d\n",num_monsters);
-
+		str=json_integer_value(json_object_get(player,"str"));
 		
 
 		for(i=0;i<num_monsters;i++)
 		{
 			monster=json_array_get(monsters,i);
 			tmp=json_integer_value(json_object_get(monster,"hp"));
-			if((minhp>tmp)&&(tmp>0))
+			if(tmp>0)
 			{
-				target=json_integer_value(json_object_get(monster,"number"));
-				minhp=tmp;
+				alive_monsters++;
+				if((minhp[1]>tmp))
+				{
+						target[1]=json_integer_value(json_object_get(monster,"number"));
+						minhp[1]=tmp;
+				}
+				if((minhp[0]>minhp[1]))
+				{
+						tmp=minhp[0];
+						minhp[0]=minhp[1];
+						minhp[1]=tmp;
+						tmp=target[0];
+						target[0]=target[1];
+						target[1]=tmp;
+				}
 			}
 		}
-		if(is_heal(player))
+		if(alive_monsters>4 && is_heal(player,2))
 		{
-			puts("HEAL");
+				puts("HEAL");
+		}
+
+		else if(is_heal(player,3))
+		{
+				puts("HEAL");
 		}
 		else
 		{
-			
-	    printf("STAB %d\n",target);
+				if(alive_monsters>=2)
+				{
+						if(minhp[0]<str/5)
+						{
+								printf("DOUBLE %d %d\n",target[0],target[1]);
+						}
+						else
+						{
+								printf("STAB %d\n",target[0]);
+						}
+				}
+				else
+				{
+				    printf("STAB %d\n",target[0]);
+				}
 		}
 }
 
